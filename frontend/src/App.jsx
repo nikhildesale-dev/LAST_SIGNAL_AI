@@ -1,122 +1,105 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import React, { useState } from 'react';
+import Sidebar from './components/Sidebar';
+import Header from './components/Header';
+import OverviewScreen from './screens/OverviewScreen';
+import RiskAssessmentScreen from './screens/RiskAssessmentScreen';
+import EmergencyMapScreen from './screens/EmergencyMapScreen';
+import EmergencyPackScreen from './screens/EmergencyPackScreen';
+import ReportHazardScreen from './screens/ReportHazardScreen';
+import { MeshRadioIcon } from './components/Icons';
+import './App.css';
 
-function App() {
-  const [count, setCount] = useState(0)
+/**
+ * LAST SIGNAL AI - Main Application Component
+ * Manages active screen routing, mobile drawer open/close, and mesh simulation alerts.
+ */
+export function App() {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  // Screen configuration
+  const screens = {
+    overview: {
+      title: 'Operations Overview',
+      subtitle: 'Predictive Disaster Intelligence & Emergency Coordination',
+      component: <OverviewScreen onNavigateToScreen={(tab) => setActiveTab(tab)} />
+    },
+    'risk-assessment': {
+      title: 'Risk Assessment & Contributing Factors',
+      subtitle: 'Simulated AI Vulnerability Weights & Safety Directives',
+      component: <RiskAssessmentScreen />
+    },
+    'emergency-map': {
+      title: 'Emergency Map & Predictive Routing',
+      subtitle: 'Offline Elevation-Aware Navigation & Hazard Avoidance',
+      component: <EmergencyMapScreen />
+    },
+    'emergency-pack': {
+      title: 'Emergency Pack & Survival Vault',
+      subtitle: 'Personal Preparedness Readiness & Offline Protocols',
+      component: <EmergencyPackScreen />
+    },
+    'report-hazard': {
+      title: 'Report Local Hazard',
+      subtitle: 'Citizen Telemetry & Decentralized P2P Mesh Gossip',
+      component: <ReportHazardScreen />
+    }
+  };
+
+  const currentScreen = screens[activeTab] || screens.overview;
+
+  // Simulate mesh ping toast notification
+  const handleSimulateMeshPing = () => {
+    setToastMessage('P2P Mesh Ping Broadcasted: 14 nearby nodes acknowledged beacon (Latency: 48ms)');
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4500);
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="app-layout">
+      {/* Dark Navy Sidebar */}
+      <Sidebar
+        activeTab={activeTab}
+        onSelectTab={(tab) => setActiveTab(tab)}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+      />
 
-      <div className="ticks"></div>
+      {/* Main Light Workspace */}
+      <div className="app-workspace">
+        {/* Top Header */}
+        <Header
+          currentScreenTitle={currentScreen.title}
+          currentScreenSubtitle={currentScreen.subtitle}
+          onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+          onSimulateMeshPing={handleSimulateMeshPing}
+        />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        {/* Scrollable Screen Content */}
+        <main className="app-main-content">
+          {currentScreen.component}
+        </main>
+      </div>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      {/* Floating Simulated Mesh Toast */}
+      {toastMessage && (
+        <div className="mesh-toast-notification" role="status">
+          <MeshRadioIcon size={18} className="toast-icon" />
+          <span>{toastMessage}</span>
+          <button
+            type="button"
+            className="toast-close-btn"
+            onClick={() => setToastMessage(null)}
+            aria-label="Dismiss message"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default App
+export default App;
