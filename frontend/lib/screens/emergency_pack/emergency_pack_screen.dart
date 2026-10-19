@@ -8,7 +8,6 @@ import '../../models/emergency_location.dart';
 import '../../providers/emergency_pack_provider.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/confirmation_dialog.dart';
-import '../../widgets/primary_button.dart';
 
 class EmergencyPackScreen extends StatefulWidget {
   const EmergencyPackScreen({super.key});

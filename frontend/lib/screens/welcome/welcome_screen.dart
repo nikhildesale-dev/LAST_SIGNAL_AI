@@ -262,15 +262,15 @@ class WelcomeScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: AppColors.borderNavy, width: 0.8),
                     ),
-                    child: Row(
+                    child: const Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.info_outline, size: 16, color: AppColors.warningAmber),
-                        const SizedBox(width: 8),
+                        Icon(Icons.info_outline, size: 16, color: AppColors.warningAmber),
+                        SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             AppConstants.prototypeDisclaimer,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               color: AppColors.mutedText,
                               height: 1.4,

@@ -1,19 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
-import '../../core/utils/formatters.dart';
 import '../../core/animations/page_transitions.dart';
 import '../../models/hazard_report.dart';
 import '../../models/notification_item.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/connectivity_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/report_provider.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/connectivity_indicator.dart';
-import '../../widgets/empty_state.dart';
 import '../../widgets/primary_button.dart';
 import '../../widgets/status_badge.dart';
 import '../map/interactive_map_screen.dart';
@@ -28,7 +24,7 @@ class ResponderDashboardScreen extends StatefulWidget {
 
 class _ResponderDashboardScreenState extends State<ResponderDashboardScreen> {
   String _selectedStatusFilter = 'All';
-  String _selectedSeverityFilter = 'All';
+  final String _selectedSeverityFilter = 'All';
 
   void _openReviewModal(HazardReport report) {
     final noteController = TextEditingController(text: report.responderNotes ?? '');
@@ -114,7 +110,7 @@ class _ResponderDashboardScreenState extends State<ResponderDashboardScreen> {
                               type: NotificationType.reportVerified,
                               relatedReportId: report.id,
                             );
-                            Navigator.pop(ctx);
+                            if (ctx.mounted) Navigator.pop(ctx);
                           },
                         ),
                       ),
@@ -142,7 +138,7 @@ class _ResponderDashboardScreenState extends State<ResponderDashboardScreen> {
                             type: NotificationType.reportVerified,
                             relatedReportId: report.id,
                           );
-                          Navigator.pop(ctx);
+                          if (ctx.mounted) Navigator.pop(ctx);
                         },
                       ),
                     ),
@@ -163,7 +159,7 @@ class _ResponderDashboardScreenState extends State<ResponderDashboardScreen> {
                             reportId: report.id,
                             reason: noteController.text.trim().isEmpty ? 'Unsubstantiated hazard condition.' : noteController.text.trim(),
                           );
-                          Navigator.pop(ctx);
+                          if (ctx.mounted) Navigator.pop(ctx);
                         },
                       ),
                     ),
@@ -180,7 +176,7 @@ class _ResponderDashboardScreenState extends State<ResponderDashboardScreen> {
                             reportId: report.id,
                             resolutionNote: noteController.text.trim().isEmpty ? 'Hazard cleared by emergency crews.' : noteController.text.trim(),
                           );
-                          Navigator.pop(ctx);
+                          if (ctx.mounted) Navigator.pop(ctx);
                         },
                       ),
                     ),
@@ -225,11 +221,13 @@ class _ResponderDashboardScreenState extends State<ResponderDashboardScreen> {
             icon: const Icon(Icons.logout, color: AppColors.mutedText),
             onPressed: () async {
               await auth.logout();
-              Navigator.pushAndRemoveUntil(
-                context,
-                FadeSlidePageRoute(page: const WelcomeScreen()),
-                (route) => false,
-              );
+              if (context.mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  FadeSlidePageRoute(page: const WelcomeScreen()),
+                  (route) => false,
+                );
+              }
             },
           ),
         ],

@@ -17,9 +17,10 @@ class AppConstants {
   // Hazard Types
   static const List<String> hazardTypes = [
     'Flood',
-    'Blocked Road',
-    'Landslide',
     'Fire',
+    'Earthquake',
+    'Landslide',
+    'Blocked Road',
     'Damaged Infrastructure',
     'Other',
   ];

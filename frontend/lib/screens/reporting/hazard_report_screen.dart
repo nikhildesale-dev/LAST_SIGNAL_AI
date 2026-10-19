@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/animations/page_transitions.dart';
 import '../../models/notification_item.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/connectivity_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/report_provider.dart';
-import '../../widgets/app_card.dart';
 import '../../widgets/primary_button.dart';
-import '../../widgets/status_badge.dart';
+import '../reports/my_reports_screen.dart';
 
 class HazardReportScreen extends StatefulWidget {
   const HazardReportScreen({super.key});
@@ -30,12 +31,37 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
   final TextEditingController _descriptionController = TextEditingController();
   bool _hasPhotoPlaceholder = false;
   bool _isSubmitting = false;
+  bool _isLocatingGps = false;
+  bool _gpsPermissionGranted = true;
+  double _currentLat = 18.9300;
+  double _currentLon = 72.8330;
+  final DateTime _reportTimestamp = DateTime.now();
 
-  final List<String> _samplePresets = [
-    '4th Avenue Underpass & Shoreline Rd',
-    'Hillview Drive, Near Mile Marker 4',
-    'Coastal Highway, Pier 12 Junction',
-    'Current GPS: Sector 3 Civic Plaza (18.9320, 72.8350)',
+  final List<Map<String, dynamic>> _samplePresets = [
+    {
+      'label': '4th Ave Underpass',
+      'address': '4th Avenue Underpass & Shoreline Rd',
+      'lat': 18.9300,
+      'lon': 72.8330,
+    },
+    {
+      'label': 'Hillview Drive',
+      'address': 'Hillview Drive, Near Mile Marker 4',
+      'lat': 18.9380,
+      'lon': 72.8290,
+    },
+    {
+      'label': 'Pier 12 Junction',
+      'address': 'Coastal Highway, Pier 12 Junction',
+      'lat': 18.9240,
+      'lon': 72.8390,
+    },
+    {
+      'label': 'Sector 3 Civic Plaza',
+      'address': 'Sector 3 Civic Plaza & Ring Rd',
+      'lat': 18.9320,
+      'lon': 72.8350,
+    },
   ];
 
   @override
@@ -43,6 +69,61 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
     _locationController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  void _acquireGpsLocation() async {
+    setState(() => _isLocatingGps = true);
+    await Future.delayed(const Duration(milliseconds: 650));
+    if (!mounted) return;
+
+    if (_gpsPermissionGranted) {
+      setState(() {
+        _isLocatingGps = false;
+        _currentLat = 18.9320;
+        _currentLon = 72.8350;
+        _locationController.text =
+            'GPS Fix: 18.9320° N, 72.8350° E (Sector 3 Civic Corridor)';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('GPS coordinates acquired successfully.'),
+          backgroundColor: AppColors.teal,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } else {
+      setState(() => _isLocatingGps = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Location permission denied. Please enter address manually.'),
+          backgroundColor: AppColors.emergencyRed,
+          action: SnackBarAction(
+            label: 'Grant',
+            textColor: Colors.white,
+            onPressed: () => setState(() => _gpsPermissionGranted = true),
+          ),
+        ),
+      );
+    }
+  }
+
+  IconData _getHazardIcon(String type) {
+    switch (type.toLowerCase()) {
+      case 'flood':
+        return Icons.water_drop;
+      case 'fire':
+        return Icons.local_fire_department;
+      case 'earthquake':
+        return Icons.vibration;
+      case 'landslide':
+        return Icons.landslide;
+      case 'blocked road':
+        return Icons.block;
+      case 'damaged infrastructure':
+        return Icons.foundation;
+      default:
+        return Icons.warning_amber_rounded;
+    }
   }
 
   Future<void> _submitReport({required bool isDraft}) async {
@@ -64,14 +145,14 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
           : _descriptionController.text.trim(),
       severity: _selectedSeverity,
       sampleLocation: _locationController.text.trim(),
-      latitude: 18.9300,
-      longitude: 72.8330,
+      latitude: _currentLat,
+      longitude: _currentLon,
       reporterEmail: userEmail,
       isOnline: conn.isOnline,
       isDraft: isDraft,
     );
 
-    // Trigger realistic local notification
+    // Trigger realistic notification
     if (isDraft) {
       await notifs.addNotification(
         title: 'Draft Saved Locally',
@@ -81,7 +162,7 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
       );
     } else if (conn.isOnline) {
       await notifs.addNotification(
-        title: 'Demo Report Submitted to Prototype',
+        title: 'Report Submitted (Online)',
         message: 'Report ${report.id} (${report.hazardType}) submitted to shared responder queue.',
         type: NotificationType.reportSubmitted,
         relatedReportId: report.id,
@@ -133,30 +214,63 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
               isDraft
                   ? 'Report saved as a local draft. You can complete and submit it at any time.'
                   : (conn.isOnline
-                      ? 'Demo report ${report.id} has been added to the shared demo report collection and is now visible in the first responder queue.'
-                      : 'Saved locally. Marked "Pending Sync". It is kept out of the responder queue until network connectivity is simulated.'),
+                      ? 'Report ${report.id} has been transmitted to the emergency network and is visible to responders in the triage queue.'
+                      : 'Network unavailable. Report ${report.id} is stored in your offline queue with status "Pending Sync". It will automatically synchronize when connectivity is restored.'),
               style: AppTypography.bodySmall,
             ),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: AppColors.deepOceanNavy,
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.borderNavy),
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  const Text('Report ID: ', style: TextStyle(fontSize: 11, color: AppColors.mutedText)),
-                  Text(report.id, style: AppTypography.code.copyWith(fontSize: 11)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Report ID:', style: TextStyle(fontSize: 11, color: AppColors.mutedText)),
+                      Text(report.id, style: AppTypography.code.copyWith(fontSize: 11, color: AppColors.icyBlue)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Status:', style: TextStyle(fontSize: 11, color: AppColors.mutedText)),
+                      Text(report.status, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.white)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Timestamp:', style: TextStyle(fontSize: 11, color: AppColors.mutedText)),
+                      Text(DateFormat('MMM dd, HH:mm').format(report.timestamp), style: const TextStyle(fontSize: 10, color: AppColors.lightMutedText)),
+                    ],
+                  ),
                 ],
               ),
             ),
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pushReplacement(
+                context,
+                FadeSlidePageRoute(page: const MyReportsScreen()),
+              );
+            },
+            child: const Text('View All Reports', style: TextStyle(color: AppColors.icyBlue)),
+          ),
           PrimaryButton(
             label: 'Done',
-            height: 40,
+            height: 38,
+            width: 80,
             onPressed: () {
               Navigator.pop(ctx);
               Navigator.pop(context);
@@ -179,6 +293,18 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.list_alt, size: 16, color: AppColors.icyBlue),
+            label: const Text('My Reports', style: TextStyle(fontSize: 12, color: AppColors.icyBlue)),
+            onPressed: () {
+              Navigator.push(
+                context,
+                FadeSlidePageRoute(page: const MyReportsScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -188,7 +314,7 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Network Status Alert
+                // Network Status & Offline Queue Notice Banner
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
@@ -205,21 +331,34 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
                       Icon(
                         conn.isOnline ? Icons.wifi : Icons.wifi_off,
                         color: conn.isOnline ? AppColors.successGreen : AppColors.warningAmber,
-                        size: 18,
+                        size: 20,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           conn.isOnline
-                              ? 'Online Mode: Report will sync directly with the responder queue.'
-                              : 'Offline Mode: Report will be cached locally and marked Pending Sync.',
+                              ? 'Online Mode: Report transmits directly to the first responder triage queue.'
+                              : 'Offline Mode: Report will be securely saved locally and marked Pending Sync.',
                           style: const TextStyle(fontSize: 11, color: AppColors.white),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
+
+                // Report Timestamp
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildSectionHeader('REPORT TIMESTAMP'),
+                    Text(
+                      DateFormat('EEE, MMM dd, yyyy • HH:mm:ss').format(_reportTimestamp),
+                      style: const TextStyle(fontSize: 10, color: AppColors.lightMutedText),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
 
                 // Hazard Type Selector
                 _buildSectionHeader('HAZARD CLASSIFICATION'),
@@ -231,6 +370,11 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
                     final isSelected = _selectedHazardType == type;
                     return ChoiceChip(
                       selected: isSelected,
+                      avatar: Icon(
+                        _getHazardIcon(type),
+                        size: 16,
+                        color: isSelected ? Colors.white : AppColors.icyBlue,
+                      ),
                       onSelected: (val) {
                         if (val) setState(() => _selectedHazardType = type);
                       },
@@ -296,38 +440,50 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // Hazard Description
-                _buildSectionHeader('HAZARD DETAILS & IMPACT'),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _descriptionController,
-                  maxLines: 4,
-                  style: const TextStyle(color: AppColors.white),
-                  decoration: const InputDecoration(
-                    hintText:
-                        'Describe observed conditions, estimated water depth, structural damages, or vehicle passage hazards...',
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Please provide a brief description of the hazard';
-                    }
-                    if (v.trim().length < 8) {
-                      return 'Description must be at least 8 characters';
-                    }
-                    return null;
-                  },
+                // Location / GPS Field with Presets & GPS Button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildSectionHeader('LOCATION / GPS COORDINATES'),
+                    InkWell(
+                      onTap: _isLocatingGps ? null : _acquireGpsLocation,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.teal.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.icyBlue, width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isLocatingGps)
+                              const SizedBox(
+                                width: 10,
+                                height: 10,
+                                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.icyBlue),
+                              )
+                            else
+                              const Icon(Icons.my_location, size: 12, color: AppColors.icyBlue),
+                            const SizedBox(width: 4),
+                            Text(
+                              _isLocatingGps ? 'Locating...' : 'Use GPS Fix',
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.icyBlue),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 20),
-
-                // Location / GPS Field with Presets
-                _buildSectionHeader('SAMPLE LOCATION / GPS COORDINATES'),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _locationController,
                   style: const TextStyle(color: AppColors.white),
                   decoration: const InputDecoration(
                     prefixIcon: Icon(Icons.location_on_outlined, color: AppColors.icyBlue),
-                    hintText: 'Enter hazard location',
+                    hintText: 'Enter hazard location or address',
                   ),
                   validator: (v) => v == null || v.trim().isEmpty ? 'Location is required' : null,
                 ),
@@ -343,10 +499,16 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
                           backgroundColor: AppColors.darkOceanBlue,
                           side: const BorderSide(color: AppColors.borderNavy),
                           label: Text(
-                            preset.split(',').first,
+                            preset['label'] as String,
                             style: const TextStyle(fontSize: 10, color: AppColors.icyBlue),
                           ),
-                          onPressed: () => setState(() => _locationController.text = preset),
+                          onPressed: () {
+                            setState(() {
+                              _locationController.text = preset['address'] as String;
+                              _currentLat = preset['lat'] as double;
+                              _currentLon = preset['lon'] as double;
+                            });
+                          },
                         ),
                       );
                     }).toList(),
@@ -354,8 +516,31 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
                 ),
                 const SizedBox(height: 20),
 
+                // Hazard Description
+                _buildSectionHeader('HAZARD DETAILS & IMPACT'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _descriptionController,
+                  maxLines: 4,
+                  style: const TextStyle(color: AppColors.white),
+                  decoration: const InputDecoration(
+                    hintText:
+                        'Describe observed conditions, estimated water depth, structural damages, downed power lines, or impassable road sections...',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Please provide a brief description of the hazard';
+                    }
+                    if (v.trim().length < 8) {
+                      return 'Description must be at least 8 characters';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
                 // Optional Photo Placeholder
-                _buildSectionHeader('OPTIONAL PHOTO ATTACHMENT'),
+                _buildSectionHeader('PHOTO VERIFICATION ATTACHMENT'),
                 const SizedBox(height: 8),
                 InkWell(
                   onTap: () {
@@ -364,7 +549,7 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     decoration: BoxDecoration(
                       color: AppColors.darkOceanBlue,
                       borderRadius: BorderRadius.circular(12),
@@ -383,14 +568,19 @@ class _HazardReportScreenState extends State<HazardReportScreen> {
                         const SizedBox(height: 8),
                         Text(
                           _hasPhotoPlaceholder
-                              ? 'Hazard_Snapshot_Sector3.jpg (Demo Attachment Added)'
-                              : 'Tap to attach simulated photo verification',
+                              ? 'Hazard_Verification_Snapshot.jpg (Demo Photo Attached)'
+                              : 'Tap to attach simulated on-site photo',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: _hasPhotoPlaceholder ? FontWeight.bold : FontWeight.normal,
                             color: _hasPhotoPlaceholder ? AppColors.icyBlue : AppColors.mutedText,
                           ),
                         ),
+                        if (_hasPhotoPlaceholder)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4),
+                            child: Text('Tap again to remove attachment', style: TextStyle(fontSize: 10, color: AppColors.mutedText)),
+                          ),
                       ],
                     ),
                   ),

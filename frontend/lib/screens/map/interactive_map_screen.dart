@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
@@ -8,9 +7,7 @@ import '../../models/hazard_report.dart';
 import '../../providers/emergency_pack_provider.dart';
 import '../../providers/report_provider.dart';
 import '../../services/routing_service.dart';
-import '../../widgets/app_card.dart';
 import '../../widgets/primary_button.dart';
-import '../../widgets/status_badge.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   final EmergencyLocation? initialDestination;
@@ -29,6 +26,8 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
   late EmergencyLocation _selectedDestination;
   RouteResult? _routeResult;
   bool _isCalculatingRoute = false;
+  bool _isWalkingMode = false;
+  String _mapFilter = 'All'; // 'All', 'Hospitals', 'Shelters', 'Hazards'
 
   @override
   void initState() {
@@ -37,7 +36,19 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
     _selectedDestination = widget.initialDestination ??
         (pack.savedLocations.isNotEmpty
             ? pack.savedLocations.first
-            : RoutingService.sampleUserLocation as dynamic);
+            : const EmergencyLocation(
+                id: 'LOC-FALLBACK',
+                name: 'Sector 3 Central Safe Staging',
+                type: LocationType.shelter,
+                sampleAddress: 'Sector 3 Plaza, High Ridge',
+                distanceKm: 2.4,
+                latitude: 18.9380,
+                longitude: 72.8290,
+                capacity: 100,
+                occupied: 42,
+                contactPhone: '+1-800-555-0199',
+                availableServices: ['Emergency Triage', 'Water Supply'],
+              ));
     _calculateRoute();
   }
 
@@ -63,11 +74,113 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
     _calculateRoute();
   }
 
+  int get _calculatedEtaMinutes {
+    final distance = _selectedDestination.distanceKm;
+    if (_isWalkingMode) {
+      // Walking speed ~ 4.2 km/h
+      return (distance / 4.2 * 60).round() + 4;
+    } else {
+      // Emergency vehicle / convoy ~ 24 km/h with obstacle buffer
+      return (distance / 24.0 * 60).round() + 5;
+    }
+  }
+
+  void _showTurnByTurnModal() {
+    if (_routeResult == null) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.darkOceanBlue,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.turn_right, color: AppColors.icyBlue, size: 22),
+                      const SizedBox(width: 8),
+                      Text(
+                        'TURN-BY-TURN GUIDANCE',
+                        style: AppTypography.titleMedium.copyWith(color: AppColors.icyBlue),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: AppColors.mutedText),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Destination: ${_selectedDestination.name} (${_selectedDestination.distanceKm} km • $_calculatedEtaMinutes mins ${_isWalkingMode ? "walking" : "by vehicle"})',
+                style: const TextStyle(fontSize: 12, color: AppColors.lightMutedText),
+              ),
+              const Divider(height: 20),
+              ..._routeResult!.navigationDirectives.map((step) {
+                final isWarning = step.contains('CAUTION');
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        isWarning ? Icons.warning_amber_rounded : Icons.navigation_outlined,
+                        size: 16,
+                        color: isWarning ? AppColors.warningAmber : AppColors.teal,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          step,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isWarning ? FontWeight.bold : FontWeight.normal,
+                            color: isWarning ? AppColors.warningAmber : Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              const SizedBox(height: 12),
+              PrimaryButton(
+                label: 'Close Guidance',
+                height: 40,
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pack = context.watch<EmergencyPackProvider>();
     final reports = context.watch<ReportProvider>();
     final verifiedHazards = reports.allReports.where((r) => r.status != 'Draft').toList();
+
+    // Apply map filtering
+    final filteredDestinations = pack.savedLocations.where((loc) {
+      if (_mapFilter == 'Hospitals') return loc.type == LocationType.hospital;
+      if (_mapFilter == 'Shelters') return loc.type == LocationType.shelter;
+      return true;
+    }).toList();
+
+    final filteredHazards = _mapFilter == 'Hospitals' || _mapFilter == 'Shelters'
+        ? <HazardReport>[]
+        : verifiedHazards;
 
     return Scaffold(
       backgroundColor: AppColors.deepOceanNavy,
@@ -75,6 +188,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
         title: const Text('EMERGENCY MAP & CORRIDORS'),
         actions: [
           IconButton(
+            tooltip: 'Reset View',
             icon: const Icon(Icons.refresh, color: AppColors.icyBlue),
             onPressed: () {
               setState(() {
@@ -101,9 +215,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
                 size: Size.infinite,
                 painter: _MapCanvasPainter(
                   userLocation: RoutingService.sampleUserLocation,
-                  destinations: pack.savedLocations,
+                  destinations: filteredDestinations,
                   selectedDestination: _selectedDestination,
-                  hazards: verifiedHazards,
+                  hazards: filteredHazards,
                   routeResult: _routeResult,
                   zoom: _zoomLevel,
                   pan: _panOffset,
@@ -118,20 +232,23 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
             left: 12,
             right: 12,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: AppColors.darkOceanBlue.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(8),
+                color: AppColors.darkOceanBlue.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: AppColors.borderNavy),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 8),
+                ],
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.offline_pin, size: 14, color: AppColors.successGreen),
-                  SizedBox(width: 6),
+                  Icon(Icons.offline_pin, size: 15, color: AppColors.successGreen),
+                  SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Illustrative Vector Map • Cached for Offline Emergency Routing (Demo)',
-                      style: TextStyle(fontSize: 10, color: AppColors.lightMutedText),
+                      'Tactical Vector Map • Offline Emergency Corridors (Simulated GPS)',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.lightMutedText),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -141,24 +258,60 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
             ),
           ),
 
+          // Map Filter Pills
+          Positioned(
+            top: 48,
+            left: 12,
+            right: 60,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: ['All', 'Hospitals', 'Shelters', 'Hazards'].map((filter) {
+                  final isSelected = _mapFilter == filter;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      selected: isSelected,
+                      label: Text(
+                        filter,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected ? Colors.white : AppColors.lightMutedText,
+                        ),
+                      ),
+                      selectedColor: AppColors.teal,
+                      backgroundColor: AppColors.darkOceanBlue.withOpacity(0.85),
+                      side: BorderSide(color: isSelected ? AppColors.icyBlue : AppColors.borderNavy),
+                      onSelected: (_) => setState(() => _mapFilter = filter),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+
           // Map Zoom & Center Control Buttons
           Positioned(
-            right: 16,
-            top: 60,
+            right: 14,
+            top: 48,
             child: Column(
               children: [
                 _buildMapControlBtn(
                   icon: Icons.add,
+                  tooltip: 'Zoom In',
                   onTap: () => setState(() => _zoomLevel = (_zoomLevel + 0.2).clamp(0.7, 2.8)),
                 ),
                 const SizedBox(height: 6),
                 _buildMapControlBtn(
                   icon: Icons.remove,
+                  tooltip: 'Zoom Out',
                   onTap: () => setState(() => _zoomLevel = (_zoomLevel - 0.2).clamp(0.7, 2.8)),
                 ),
                 const SizedBox(height: 6),
                 _buildMapControlBtn(
                   icon: Icons.my_location,
+                  tooltip: 'Center on Me',
                   onTap: () => setState(() {
                     _zoomLevel = 1.0;
                     _panOffset = Offset.zero;
@@ -171,11 +324,11 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
           // Map Legend Card
           Positioned(
             left: 14,
-            top: 50,
+            bottom: 230,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.darkOceanBlue.withOpacity(0.85),
+                color: AppColors.darkOceanBlue.withOpacity(0.88),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: AppColors.borderNavy),
               ),
@@ -190,7 +343,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
                   const SizedBox(height: 4),
                   _buildLegendItem(Icons.water_drop, AppColors.warningAmber, 'Floods'),
                   const SizedBox(height: 4),
-                  _buildLegendItem(Icons.block, AppColors.emergencyRed, 'Blocked Roads'),
+                  _buildLegendItem(Icons.block, AppColors.emergencyRed, 'Road Blocks'),
                 ],
               ),
             ),
@@ -215,6 +368,16 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_isCalculatingRoute)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: LinearProgressIndicator(
+                        backgroundColor: AppColors.deepOceanNavy,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.icyBlue),
+                        minHeight: 2,
+                      ),
+                    ),
+
                   // Destination Selection Chips
                   SizedBox(
                     height: 34,
@@ -245,7 +408,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Route Risk Metric & Destination Header
+                  // Destination Name & Route Metrics
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -314,13 +477,80 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
                   ),
                   const SizedBox(height: 10),
 
+                  // Mode of Travel Toggle & ETA Display
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.deepOceanNavy,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.borderNavy),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              _isWalkingMode ? Icons.directions_walk : Icons.directions_car,
+                              size: 18,
+                              color: AppColors.icyBlue,
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'ETA: $_calculatedEtaMinutes minutes',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                                ),
+                                Text(
+                                  _isWalkingMode ? 'Walking speed (~4 km/h)' : 'Vehicle convoy speed (~24 km/h)',
+                                  style: const TextStyle(fontSize: 10, color: AppColors.lightMutedText),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        // Toggle Button
+                        Row(
+                          children: [
+                            InkWell(
+                              onTap: () => setState(() => _isWalkingMode = false),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: !_isWalkingMode ? AppColors.teal : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text('Convoy', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: () => setState(() => _isWalkingMode = true),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _isWalkingMode ? AppColors.teal : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text('Foot', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
                   // Hazard Advisory along route
                   if (_routeResult != null)
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: AppColors.deepOceanNavy,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppColors.borderNavy),
                       ),
                       child: Row(
@@ -329,7 +559,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
                             _routeResult!.intersectingHazards.isNotEmpty
                                 ? Icons.warning_amber_rounded
                                 : Icons.verified_user_outlined,
-                            size: 18,
+                            size: 16,
                             color: _routeResult!.intersectingHazards.isNotEmpty
                                 ? AppColors.warningAmber
                                 : AppColors.successGreen,
@@ -348,19 +578,31 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
                     ),
                   const SizedBox(height: 12),
 
-                  // Navigation Action Button
+                  // Action Buttons: Turn-by-Turn & Lock Route
                   Row(
                     children: [
                       Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.list_alt, size: 16),
+                          label: const Text('Guidance Steps', style: TextStyle(fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 42),
+                            side: const BorderSide(color: AppColors.icyBlue),
+                          ),
+                          onPressed: _showTurnByTurnModal,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
                         child: PrimaryButton(
-                          label: 'Simulate Navigation Corridors',
-                          icon: Icons.directions_outlined,
-                          height: 44,
+                          label: 'Lock Corridor',
+                          icon: Icons.navigation_outlined,
+                          height: 42,
                           onPressed: () {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
-                                  'Route guidance locked to ${_selectedDestination.name}. Intersecting hazards avoided.',
+                                  'Safe emergency corridor locked to ${_selectedDestination.name}. Route cached for offline transit.',
                                 ),
                                 backgroundColor: AppColors.teal,
                               ),
@@ -379,18 +621,18 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen> {
     );
   }
 
-  Widget _buildMapControlBtn({required IconData icon, required VoidCallback onTap}) {
+  Widget _buildMapControlBtn({required IconData icon, required String tooltip, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: AppColors.darkOceanBlue.withOpacity(0.9),
+          color: AppColors.darkOceanBlue.withOpacity(0.92),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: AppColors.borderNavy),
         ),
-        child: Icon(icon, size: 20, color: AppColors.icyBlue),
+        child: Icon(icon, size: 18, color: AppColors.icyBlue),
       ),
     );
   }
@@ -431,7 +673,7 @@ class _MapCanvasPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height * 0.42) + pan;
+    final center = Offset(size.width / 2, size.height * 0.40) + pan;
 
     // Background water and land grid
     final waterPaint = Paint()..color = const Color(0xFF091F2F);

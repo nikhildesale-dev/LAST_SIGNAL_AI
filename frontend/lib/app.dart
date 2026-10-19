@@ -8,6 +8,8 @@ import 'providers/report_provider.dart';
 import 'providers/emergency_pack_provider.dart';
 import 'providers/bluetooth_provider.dart';
 import 'providers/notification_provider.dart';
+import 'providers/theme_provider.dart';
+import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/bluetooth_service.dart';
 import 'services/local_storage_service.dart';
@@ -21,11 +23,15 @@ class LastSignalApp extends StatelessWidget {
     final storageService = LocalStorageService();
     final authService = AuthService(storageService);
     final bluetoothService = BluetoothService();
+    final apiService = ApiService();
 
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider<ThemeProvider>(
+          create: (_) => ThemeProvider(),
+        ),
         ChangeNotifierProvider<ConnectivityProvider>(
-          create: (_) => ConnectivityProvider(),
+          create: (_) => ConnectivityProvider(apiService),
         ),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(authService, storageService)..init(),
@@ -43,13 +49,17 @@ class LastSignalApp extends StatelessWidget {
           create: (_) => NotificationProvider(storageService)..init(),
         ),
       ],
-      child: MaterialApp(
-        title: AppConstants.appName,
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.dark,
-        home: const SplashScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            title: AppConstants.appName,
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            home: const SplashScreen(),
+          );
+        },
       ),
     );
   }

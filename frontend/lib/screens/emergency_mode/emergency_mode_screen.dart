@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
-import '../../core/utils/formatters.dart';
 import '../../core/animations/page_transitions.dart';
 import '../../core/animations/pulsing_widget.dart';
 import '../../models/notification_item.dart';
@@ -13,7 +12,6 @@ import '../../providers/report_provider.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/primary_button.dart';
 import '../bluetooth/bluetooth_p2p_screen.dart';
-import '../emergency_pack/emergency_pack_screen.dart';
 import '../map/interactive_map_screen.dart';
 import '../reporting/hazard_report_screen.dart';
 
