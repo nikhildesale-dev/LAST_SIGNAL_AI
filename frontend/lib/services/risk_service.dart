@@ -22,6 +22,7 @@ class RiskEstimate {
   final String summary;
   final List<RiskFactor> contributingFactors;
   final List<String> recommendedActions;
+  final bool isLiveAi;
 
   const RiskEstimate({
     required this.score,
@@ -33,6 +34,7 @@ class RiskEstimate {
     required this.summary,
     required this.contributingFactors,
     required this.recommendedActions,
+    this.isLiveAi = false,
   });
 }
 
@@ -42,10 +44,25 @@ abstract class IRiskService {
   Future<int> evaluateRouteRiskScore(List<String> activeHazardTypes);
 }
 
-/// Deterministic mock implementation of the predictive risk model
+/// Dual-engine risk service: queries live backend AI if reachable;
+/// otherwise transparently falls back to local offline heuristic model.
 class RiskService implements IRiskService {
+  final dynamic _apiService;
+
+  RiskService([this._apiService]);
+
   @override
   Future<RiskEstimate> getAreaRiskEstimate({double? lat, double? lon}) async {
+    // Attempt live backend AI prediction if apiService is provided
+    if (_apiService != null) {
+      try {
+        final liveResult = await _apiService.predictDisasterRisk(lat: lat, lon: lon);
+        if (liveResult != null) {
+          return liveResult;
+        }
+      } catch (_) {}
+    }
+
     // Deterministic simulation based on coastal flood & cyclone factors
     return RiskEstimate(
       score: 68,
@@ -53,7 +70,8 @@ class RiskService implements IRiskService {
       modelVersion: 'v2.4-flood-cyclone-ensemble',
       lastUpdated: DateTime.now().subtract(const Duration(minutes: 14)),
       confidenceScore: 0.92,
-      dataSource: 'Coastal Doppler + Satellite Inundation Index (Simulated)',
+      dataSource: 'Coastal Doppler + Satellite Inundation Index (Simulated / Offline Cache)',
+      isLiveAi: false,
       summary:
           'High tidal storm surge combined with blocked drainage conduits poses acute inundation hazards across coastal corridors.',
       contributingFactors: const [

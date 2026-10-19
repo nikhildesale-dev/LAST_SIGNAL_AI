@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:last_signal_ai/app.dart';
 import 'package:last_signal_ai/services/local_storage_service.dart';
 import 'package:last_signal_ai/services/auth_service.dart';
 import 'package:last_signal_ai/services/bluetooth_service.dart';

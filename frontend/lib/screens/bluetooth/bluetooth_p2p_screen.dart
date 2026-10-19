@@ -4,7 +4,6 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/animations/pulsing_widget.dart';
-import '../../models/bluetooth_message.dart';
 import '../../models/hazard_report.dart';
 import '../../models/notification_item.dart';
 import '../../providers/bluetooth_provider.dart';

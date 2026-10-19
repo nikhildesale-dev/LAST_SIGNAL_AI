@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/animations/page_transitions.dart';
@@ -30,11 +29,13 @@ class AdminDashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.logout, color: AppColors.mutedText),
             onPressed: () async {
               await auth.logout();
-              Navigator.pushAndRemoveUntil(
-                context,
-                FadeSlidePageRoute(page: const WelcomeScreen()),
-                (route) => false,
-              );
+              if (context.mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  FadeSlidePageRoute(page: const WelcomeScreen()),
+                  (route) => false,
+                );
+              }
             },
           ),
         ],
@@ -221,7 +222,7 @@ class AdminDashboardScreen extends StatelessWidget {
                       children: [
                         Container(
                           padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             color: AppColors.deepOceanNavy,
                             shape: BoxShape.circle,
                           ),

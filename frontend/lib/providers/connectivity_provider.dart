@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 
 enum NetworkStatus {
   online,
@@ -8,13 +9,21 @@ enum NetworkStatus {
 }
 
 class ConnectivityProvider extends ChangeNotifier {
+  final ApiService _apiService;
   NetworkStatus _status = NetworkStatus.online;
   DateTime _lastOnlineTime = DateTime.now();
   bool _isSyncing = false;
+  BackendHealthResult? _lastHealthResult;
+
+  ConnectivityProvider([ApiService? apiService])
+      : _apiService = apiService ?? ApiService();
 
   NetworkStatus get status => _status;
   DateTime get lastOnlineTime => _lastOnlineTime;
   bool get isSyncing => _isSyncing;
+  ApiService get apiService => _apiService;
+  BackendHealthResult? get lastHealthResult => _lastHealthResult;
+  String get backendUrl => _apiService.baseUrl;
 
   bool get isOnline => _status == NetworkStatus.online;
   bool get isWeak => _status == NetworkStatus.weak;
@@ -65,6 +74,27 @@ class ConnectivityProvider extends ChangeNotifier {
     _status = NetworkStatus.online;
     _lastOnlineTime = DateTime.now();
     _isSyncing = false;
+    notifyListeners();
+  }
+
+  Future<BackendHealthResult> checkBackend() async {
+    _status = NetworkStatus.reconnecting;
+    notifyListeners();
+
+    final result = await _apiService.checkBackendHealth();
+    _lastHealthResult = result;
+    if (result.isHealthy) {
+      _status = NetworkStatus.online;
+      _lastOnlineTime = DateTime.now();
+    } else {
+      _status = NetworkStatus.offline;
+    }
+    notifyListeners();
+    return result;
+  }
+
+  Future<void> updateBackendUrl(String newUrl) async {
+    await _apiService.setBaseUrl(newUrl);
     notifyListeners();
   }
 }
