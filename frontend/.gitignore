@@ -46,3 +46,10 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+node_modules/
+dist/
+.vite/
+package-lock.json
+.package-lock.json
+.oxlintrc.json
