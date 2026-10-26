@@ -4,10 +4,12 @@ import '../data/mock_locations.dart';
 import '../models/checklist_item.dart';
 import '../models/emergency_contact.dart';
 import '../models/emergency_location.dart';
+import '../services/api_service.dart';
 import '../services/local_storage_service.dart';
 
 class EmergencyPackProvider extends ChangeNotifier {
   final LocalStorageService _storage;
+  final ApiService? _apiService;
 
   List<EmergencyContact> _contacts = [];
   List<ChecklistItem> _checklistItems = [];
@@ -15,7 +17,7 @@ class EmergencyPackProvider extends ChangeNotifier {
   String _emergencyInstructions = '';
   DateTime _lastUpdated = DateTime.now();
 
-  EmergencyPackProvider(this._storage);
+  EmergencyPackProvider(this._storage, [this._apiService]);
 
   List<EmergencyContact> get contacts => List.unmodifiable(_contacts);
   List<ChecklistItem> get checklistItems => List.unmodifiable(_checklistItems);
@@ -49,7 +51,7 @@ class EmergencyPackProvider extends ChangeNotifier {
           relationship: 'Emergency Authority',
           phone: '+1 (555) 911-0000',
           isPrimary: false,
-          notes: 'VHF Channel 16 / UHF 462.675 MHz',
+          notes: 'Emergency broadcast monitoring channel 16.',
         ),
       ];
       await _storage.saveContacts(_contacts);
@@ -61,11 +63,10 @@ class EmergencyPackProvider extends ChangeNotifier {
       _emergencyInstructions = savedInstructions;
     } else {
       _emergencyInstructions =
-          '1. If flood sirens sound, move immediately to 2nd floor or roof.\n'
-          '2. Shut off main gas valve and circuit breakers before water reaches outlet level.\n'
-          '3. Keep battery radio tuned to Coastal Civil Defense Frequency (102.7 FM).\n'
-          '4. Family designated reunion point: Central High Civic Shelter (Sector 2).\n'
-          '5. Keep phone on battery saver mode; use Bluetooth P2P relay for hazard messages.';
+          'PRIMARY RALLY POINT: North Ridge Evacuation Shelter.\n'
+          'SECONDARY RENDEZVOUS: Sector 4 Relief Distribution Center.\n'
+          'EMERGENCY COMM: Bluetooth P2P Relay Mesh active.\n'
+          'MEDICAL PRIORITY: Maya Lin has mild asthma (inhaler packed in pack).';
       await _storage.saveInstructions(_emergencyInstructions);
     }
 
@@ -86,8 +87,16 @@ class EmergencyPackProvider extends ChangeNotifier {
       await _storage.saveChecklistState(initialMap);
     }
 
-    // 4. Saved offline emergency locations
+    // 4. Saved offline emergency locations (attempt backend live load, fall back to sample locations)
     _savedLocations = List.from(MockLocations.sampleLocations);
+    if (_apiService != null) {
+      try {
+        final remoteLocs = await _apiService.fetchLocations();
+        if (remoteLocs != null && remoteLocs.isNotEmpty) {
+          _savedLocations = remoteLocs;
+        }
+      } catch (_) {}
+    }
 
     _lastUpdated = DateTime.now();
     notifyListeners();

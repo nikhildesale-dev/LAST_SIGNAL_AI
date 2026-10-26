@@ -21,9 +21,9 @@ class LastSignalApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final storageService = LocalStorageService();
-    final authService = AuthService(storageService);
-    final bluetoothService = BluetoothService();
     final apiService = ApiService();
+    final authService = AuthService(storageService, apiService);
+    final bluetoothService = BluetoothService();
 
     return MultiProvider(
       providers: [
@@ -37,16 +37,16 @@ class LastSignalApp extends StatelessWidget {
           create: (_) => AuthProvider(authService, storageService)..init(),
         ),
         ChangeNotifierProvider<ReportProvider>(
-          create: (_) => ReportProvider(storageService)..init(),
+          create: (_) => ReportProvider(storageService, apiService)..init(),
         ),
         ChangeNotifierProvider<EmergencyPackProvider>(
-          create: (_) => EmergencyPackProvider(storageService)..init(),
+          create: (_) => EmergencyPackProvider(storageService, apiService)..init(),
         ),
         ChangeNotifierProvider<BluetoothProvider>(
           create: (_) => BluetoothProvider(bluetoothService, storageService)..init(),
         ),
         ChangeNotifierProvider<NotificationProvider>(
-          create: (_) => NotificationProvider(storageService)..init(),
+          create: (_) => NotificationProvider(storageService, apiService)..init(),
         ),
       ],
       child: Consumer<ThemeProvider>(

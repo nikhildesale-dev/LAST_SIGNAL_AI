@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import '../core/constants/app_constants.dart';
 import '../data/mock_reports.dart';
 import '../models/hazard_report.dart';
+import '../services/api_service.dart';
 import '../services/local_storage_service.dart';
 
 class ReportProvider extends ChangeNotifier {
   final LocalStorageService _storage;
+  final ApiService? _apiService;
   List<HazardReport> _reports = [];
   DateTime _lastSyncTime = DateTime.now();
 
-  ReportProvider(this._storage);
+  ReportProvider(this._storage, [this._apiService]);
 
   List<HazardReport> get allReports => List.unmodifiable(_reports);
   DateTime get lastSyncTime => _lastSyncTime;
@@ -43,11 +45,33 @@ class ReportProvider extends ChangeNotifier {
       _reports = List.from(MockReports.initialReports);
       await _storage.saveReports(_reports);
     }
+
+    // Attempt live backend synchronization if connected
+    if (_apiService != null) {
+      try {
+        final remoteReports = await _apiService.fetchReportsFromBackend();
+        if (remoteReports != null && remoteReports.isNotEmpty) {
+          // Keep local pending or draft items, merge with authoritative remote reports
+          final localUnsynced = _reports.where((r) => r.syncStatus == SyncStatus.localOnly || r.isDraft).toList();
+          final Map<String, HazardReport> merged = {};
+          for (final r in remoteReports) {
+            merged[r.id] = r;
+          }
+          for (final local in localUnsynced) {
+            merged[local.id] = local;
+          }
+          _reports = merged.values.toList()
+            ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          await _storage.saveReports(_reports);
+        }
+      } catch (_) {}
+    }
+
     notifyListeners();
   }
 
   /// Submit report:
-  /// If online: becomes 'Submitted', syncStatus = synced -> immediately visible to responders
+  /// If online: becomes 'Submitted', syncStatus = synced -> immediately visible to responders & backend
   /// If offline/weak: becomes 'Pending Sync', syncStatus = localOnly -> kept strictly out of responder queue
   Future<HazardReport> submitReport({
     required String hazardType,
@@ -79,18 +103,33 @@ class ReportProvider extends ChangeNotifier {
       isDraft: isDraft,
     );
 
+    // If online, dispatch report to FastAPI backend
+    if (isOnline && !isDraft && _apiService != null) {
+      try {
+        await _apiService.submitReportToBackend(newReport);
+      } catch (_) {}
+    }
+
     _reports.insert(0, newReport);
     await _storage.saveReports(_reports);
     notifyListeners();
     return newReport;
   }
 
-  /// Flow C: Simulate Reconnection -> Syncs eligible pending reports into the shared queue
+  /// Flow C: Simulate Reconnection -> Syncs eligible pending reports into the shared queue & backend
   Future<int> syncPendingReports() async {
-    int syncedCount = 0;
+    final pendingToSync = _reports.where((r) => r.syncStatus == SyncStatus.localOnly && !r.isDraft).toList();
+    int syncedCount = pendingToSync.length;
+
+    // Send batch to backend if available
+    if (_apiService != null && pendingToSync.isNotEmpty) {
+      try {
+        await _apiService.syncReportsWithBackend(pendingToSync);
+      } catch (_) {}
+    }
+
     _reports = _reports.map((report) {
       if (report.syncStatus == SyncStatus.localOnly && !report.isDraft) {
-        syncedCount++;
         return report.copyWith(
           syncStatus: SyncStatus.synced,
           status: AppConstants.statusSubmitted,
@@ -111,6 +150,12 @@ class ReportProvider extends ChangeNotifier {
     required String responderName,
     String? responderNote,
   }) async {
+    if (_apiService != null) {
+      try {
+        await _apiService.verifyReport(reportId, responderName, responderNote);
+      } catch (_) {}
+    }
+
     _reports = _reports.map((r) {
       if (r.id == reportId) {
         return r.copyWith(
@@ -130,6 +175,12 @@ class ReportProvider extends ChangeNotifier {
     required String reportId,
     String? responderNote,
   }) async {
+    if (_apiService != null) {
+      try {
+        await _apiService.markUnderReview(reportId, responderNote);
+      } catch (_) {}
+    }
+
     _reports = _reports.map((r) {
       if (r.id == reportId) {
         return r.copyWith(
@@ -148,6 +199,12 @@ class ReportProvider extends ChangeNotifier {
     required String reportId,
     required String reason,
   }) async {
+    if (_apiService != null) {
+      try {
+        await _apiService.rejectReport(reportId, reason);
+      } catch (_) {}
+    }
+
     _reports = _reports.map((r) {
       if (r.id == reportId) {
         return r.copyWith(
@@ -166,6 +223,12 @@ class ReportProvider extends ChangeNotifier {
     required String reportId,
     String? resolutionNote,
   }) async {
+    if (_apiService != null) {
+      try {
+        await _apiService.resolveReport(reportId, resolutionNote);
+      } catch (_) {}
+    }
+
     _reports = _reports.map((r) {
       if (r.id == reportId) {
         return r.copyWith(
