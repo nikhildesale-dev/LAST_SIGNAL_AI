@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/app_user.dart';
+import '../models/emergency_location.dart';
 import '../models/hazard_report.dart';
+import '../models/notification_item.dart';
 import 'risk_service.dart';
 
 enum BackendStatus {
@@ -182,6 +185,7 @@ class ApiService {
               'Risk prediction synthesized from live backend telemetry.',
           contributingFactors: contributingFactors,
           recommendedActions: recommendedActions,
+          isLiveAi: true,
         );
       }
     } catch (_) {
@@ -189,6 +193,127 @@ class ApiService {
     }
     return null;
   }
+
+  // =========================================================================
+  // Auth API Calls
+  // =========================================================================
+
+  /// Authenticate against backend
+  Future<Map<String, dynamic>?> login({
+    required String email,
+    required String password,
+    required String expectedRole,
+  }) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/auth/login');
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'email': email,
+              'password': password,
+              'expectedRole': expectedRole,
+            }),
+          )
+          .timeout(const Duration(seconds: 4));
+
+      if (response.statusCode == 200) {
+        _status = BackendStatus.connected;
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Register citizen on backend
+  Future<Map<String, dynamic>?> register({
+    required String name,
+    required String email,
+    required String password,
+    required String confirmPassword,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+  }) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/auth/register');
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'name': name,
+              'email': email,
+              'password': password,
+              'confirmPassword': confirmPassword,
+              'emergencyContactName': emergencyContactName,
+              'emergencyContactPhone': emergencyContactPhone,
+            }),
+          )
+          .timeout(const Duration(seconds: 4));
+
+      if (response.statusCode == 200) {
+        _status = BackendStatus.connected;
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // =========================================================================
+  // User & Admin API Calls
+  // =========================================================================
+
+  /// Fetch all users (for admin panel)
+  Future<List<AppUser>?> fetchAllUsers() async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/users');
+      final response = await http.get(uri).timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        _status = BackendStatus.connected;
+        final List<dynamic> list = jsonDecode(response.body);
+        return list.map((item) => AppUser.fromJson(item as Map<String, dynamic>)).toList();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Admin: approve responder
+  Future<bool> approveResponder(String userId) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/users/$userId/approve');
+      final response = await http.patch(uri).timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Admin: reject responder
+  Future<bool> rejectResponder(String userId) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/users/$userId/reject');
+      final response = await http.patch(uri).timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Admin: toggle account enable/disable
+  Future<bool> toggleAccountStatus(String userId) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/users/$userId/toggle');
+      final response = await http.patch(uri).timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // =========================================================================
+  // Reports API Calls
+  // =========================================================================
 
   /// Submit a single report to live backend
   Future<bool> submitReportToBackend(HazardReport report) async {
@@ -207,14 +332,141 @@ class ApiService {
     }
   }
 
-  /// Fetch latest verified reports from live backend
+  /// Fetch latest reports from live backend
   Future<List<HazardReport>?> fetchReportsFromBackend() async {
     try {
       final uri = Uri.parse('$_baseUrl/api/reports');
       final response = await http.get(uri).timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
+        _status = BackendStatus.connected;
         final List<dynamic> list = jsonDecode(response.body);
         return list.map((item) => HazardReport.fromJson(item as Map<String, dynamic>)).toList();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Bulk sync offline reports with backend
+  Future<List<HazardReport>?> syncReportsWithBackend(List<HazardReport> reports) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/reports/sync');
+      final payload = jsonEncode({
+        'reports': reports.map((r) => r.toJson()).toList(),
+      });
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: payload,
+          )
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        _status = BackendStatus.connected;
+        final List<dynamic> list = jsonDecode(response.body);
+        return list.map((item) => HazardReport.fromJson(item as Map<String, dynamic>)).toList();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Responder: mark report under review
+  Future<bool> markUnderReview(String reportId, String? responderNote) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/reports/$reportId/review');
+      final response = await http
+          .patch(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'responderNote': responderNote}),
+          )
+          .timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Responder: verify report
+  Future<bool> verifyReport(String reportId, String responderName, String? responderNote) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/reports/$reportId/verify');
+      final response = await http
+          .patch(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'responderName': responderName,
+              'responderNote': responderNote,
+            }),
+          )
+          .timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Responder: reject report
+  Future<bool> rejectReport(String reportId, String reason) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/reports/$reportId/reject');
+      final response = await http
+          .patch(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'reason': reason}),
+          )
+          .timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Responder: resolve report
+  Future<bool> resolveReport(String reportId, String? resolutionNote) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/reports/$reportId/resolve');
+      final response = await http
+          .patch(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'resolutionNote': resolutionNote}),
+          )
+          .timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // =========================================================================
+  // Locations & Notifications API Calls
+  // =========================================================================
+
+  /// Fetch emergency locations from live backend
+  Future<List<EmergencyLocation>?> fetchLocations() async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/locations');
+      final response = await http.get(uri).timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        _status = BackendStatus.connected;
+        final List<dynamic> list = jsonDecode(response.body);
+        return list.map((item) => EmergencyLocation.fromJson(item as Map<String, dynamic>)).toList();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Fetch notifications for given user
+  Future<List<NotificationItem>?> fetchNotifications(String userEmail) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/notifications?user_email=${Uri.encodeComponent(userEmail)}');
+      final response = await http.get(uri).timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        _status = BackendStatus.connected;
+        final List<dynamic> list = jsonDecode(response.body);
+        return list.map((item) => NotificationItem.fromJson(item as Map<String, dynamic>)).toList();
       }
     } catch (_) {}
     return null;
