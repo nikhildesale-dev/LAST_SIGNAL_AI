@@ -1,0 +1,62 @@
+{
+  "system_name": "LAST_SIGNAL_AI Gated Dual-Regime River-Level Forecaster",
+  "version": "1.0.0",
+  "description": "Hydrologically-aware hybrid forecaster that dynamically switches between local persistence (baseflow regime) and multi-station ridge regression (surge regime), with safe fallback to persistence when upstream telemetry drops (degraded regime).",
+  "stations": {
+    "target_river_gauge": "Ankali Bridge (Krishna River)",
+    "upstream_river_gauge_warna": "Shigaon (Warna River tributary)",
+    "upstream_reservoir_gauge_koyna": "Koyna_1 (Koyna Dam reservoir headwaters)",
+    "rainfall_station": "SANGLI"
+  },
+  "regimes": {
+    "BASEFLOW": {
+      "description": "Quiescent river stage under stable hydrological conditions. Local river stage changes very slowly, making 1-hour lagged stage persistence the optimal low-variance predictor.",
+      "forecasting_engine": "Persistence (river_lag_1h)"
+    },
+    "SURGE": {
+      "description": "Hydrological surge driven by heavy cumulative rainfall, sudden precipitation bursts, or rapid upstream stage acceleration at Shigaon or Koyna Dam. Multi-station ridge regression captures upstream hydrograph pulse propagation.",
+      "forecasting_engine": "Multi-Station Ridge Regression (Config C)"
+    },
+    "DEGRADED": {
+      "description": "Sensor failure, transmission latency, or missing telemetry in upstream river gauges or rainfall station, while local Ankali gauge remains functional. Graceful fallback to local persistence.",
+      "forecasting_engine": "Fallback Persistence (river_lag_1h)"
+    },
+    "DEGRADED_UNUSABLE": {
+      "description": "Local Ankali Bridge river gauge telemetry is unavailable. No forecast can be produced safely.",
+      "forecasting_engine": "NaN / Sensor Outage Alarm"
+    }
+  },
+  "thresholds": {
+    "rain_sum_72h_mm": 5.0,
+    "rain_intensity_6h_mm_per_h": 0.20,
+    "shigaon_delta_6h_m": 0.08,
+    "shigaon_delta_24h_m": 0.16,
+    "koyna_delta_24h_m": 0.10
+  },
+  "hysteresis": {
+    "holding_hours": 24,
+    "rationale": "Prevents rapid oscillation between regimes during flood hydrograph crests when instantaneous rate of stage change (dh/dt) temporarily approaches zero."
+  },
+  "features_schema": [
+    "rain_sum_24h",
+    "rain_sum_48h",
+    "rain_sum_72h",
+    "rain_intensity_6h",
+    "river_lag_1h",
+    "river_lag_6h",
+    "river_lag_24h",
+    "shigaon_delta_1h",
+    "shigaon_delta_3h",
+    "shigaon_delta_6h",
+    "shigaon_delta_24h",
+    "koyna_delta_1h",
+    "koyna_delta_3h",
+    "koyna_delta_6h",
+    "koyna_delta_24h"
+  ],
+  "model_paths": {
+    "ridge_6h": "models/multistation/config_c_ridge_6h.joblib",
+    "ridge_24h": "models/multistation/config_c_ridge_24h.joblib"
+  }
+}
+

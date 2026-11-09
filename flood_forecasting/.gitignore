@@ -1,0 +1,14 @@
+﻿__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+frontend/node_modules/
+frontend/dist/
+data/raw/
+data/cleaned/
+data/indofloods/
+data/audit_intermediates/
+scratch/
+results/
